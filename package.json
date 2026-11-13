@@ -1,0 +1,52 @@
+{
+  "name": "@local/cas-journal-filter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH journal selection plugin: a floating panel over 21,772 CAS 2025 journal records, filtered by major category, 2024 JCR impact factor, quartile, 2023→2025 change, Top, open access, WoS index, and name keywords, with CSV export.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "data",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "journal",
+    "cas-partition",
+    "impact-factor",
+    "jcr"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wongdark2017/dsh-journal-selection-plugin.git"
+  },
+  "homepage": "https://github.com/wongdark2017/dsh-journal-selection-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/wongdark2017/dsh-journal-selection-plugin/issues"
+  }
+}

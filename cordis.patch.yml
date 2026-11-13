@@ -1,0 +1,5 @@
+# One row: the Host half serves the bundled dataset over a webServer route, and
+# dsh.client discovers the browser half through the package manifest.
+- insert:
+    - id: cas-journal-filter
+      name: '@local/cas-journal-filter'

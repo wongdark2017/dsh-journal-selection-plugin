@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Journal filter",
+    "description": "Adds a 期刊筛选 action at the sidebar foot, beside Settings. It opens a panel over the app that filters the bundled 2025 CAS journal table (21,772 titles) by CAS major category (21 values), impact factor range (2024 JCR, 20,872 titles carry one), 2025 quartile, change since 2023, Top, open access, and journal-name keywords. Type a requirement in the top box (for example `材料 2区以上 IF>5 非OA 升级`) and press Enter, or click the chips and type the bounds; sort the matches by impact factor, quartile, change, or name, and export CSV with impact factor and WoS index columns. Everything runs on the local table the bundle ships: no model requests, no network access, no writes beyond the CSV download. Impact factors are Clarivate JCR 2024 (released June 2025); titles without a JCR record show `—` and are excluded once an impact-factor bound is set. Categories and impact factors come from a public copy of the partition table, which can lag official revisions. Turning the bundle off removes the action, the panel, and the table route."
+  }
+}
