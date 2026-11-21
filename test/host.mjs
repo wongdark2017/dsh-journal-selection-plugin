@@ -25,6 +25,8 @@ assert.equal(data.wosNames.length, 15)
 assert.equal(data.field.length, 21772)
 assert.equal(data.if.length, 65316)
 assert.equal(data.wos.length, 21772)
+assert.equal(data.minorNames.length, 254)
+assert.equal(data.minor.split('|').length, 21772)
 assert.equal(data.matched, 21772)
 assert.equal(data.withIf, 20872)
 

@@ -1,9 +1,9 @@
 {
   "name": "@local/cas-journal-filter",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "DSH journal selection plugin: a floating panel over 21,772 CAS 2025 journal records, filtered by major category, 2024 JCR impact factor, quartile, 2023→2025 change, Top, open access, WoS index, and name keywords, with CSV export.",
+  "description": "DSH journal selection plugin: a floating panel over 21,772 CAS 2025 journal records, filtered by major and minor category, 2024 JCR impact factor, quartile, 2023→2025 change, Top, open access, WoS index, and name keywords, with CSV export.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

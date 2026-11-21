@@ -94,6 +94,8 @@ const cases = [
   ['SCIE 材料 Q1', { wos: [1], q: [1], topics: ['Materials Science'] }],
   ['sci 2区', { wos: [1], q: [2] }],
   ['ESCI 非OA', { wos: [4], oa: 'no' }],
+  ['小类:法学', { minorWords: ['法学'] }],
+  ['小类=law 2区', { minorWords: ['law'], q: [2] }],
 ]
 for (const [text, expected] of cases) {
   const got = parsePrompt(text)
@@ -177,6 +179,36 @@ for (const entry of api.__internal.nameWords) {
   assert.deepEqual(parsed.ignored, [], 'name word is reported as ignored: ' + word)
 }
 
+// minor categories (小类)
+assert.equal(data.minorNames.length, 254, 'minor table size')
+for (const j of data.journals) {
+  assert.ok(j.minors.length >= 1, 'journal without a minor category: ' + j.name)
+  for (const m of j.minors) {
+    assert.ok(m >= 0 && m < data.minorNames.length, 'minor index in range: ' + j.name)
+    assert.ok(typeof data.minorNames[m].zh === 'string' && data.minorNames[m].zh !== '', 'minor has zh name')
+  }
+}
+const lawIndex = data.minorNames.findIndex((n) => n.zh === '法学')
+assert.ok(lawIndex >= 0, '法学 minor exists')
+const emptyFilter = { topic: [], minor: [], q: [], trend: [], top: 'any', oa: 'any', ifMin: '', ifMax: '', wos: [], kw: '', sort: 'if' }
+const lawRows = filterRows(data.journals, { ...emptyFilter, minor: [lawIndex] })
+assert.equal(lawRows.length, 427, '法学 minor size')
+assert.equal(lawRows.filter((j) => j.q25 === 1).length, 9, '法学 Q1 count')
+const socioIndex = data.fields.findIndex((f) => f.zh === '社会学')
+const lawSocio = filterRows(data.journals, { ...emptyFilter, topic: [socioIndex], minor: [lawIndex] })
+assert.equal(lawSocio.length, 395, '法学 inside 社会学')
+const yale = lawRows.find((j) => j.name === 'YALE LAW JOURNAL')
+assert.ok(yale && yale.impact === 5.2, 'Yale Law Journal IF')
+
+// a journal can sit in two minor categories; selecting either must return it
+const governance = data.journals.find((j) => j.name === 'Regulation & Governance')
+assert.ok(governance, 'Regulation & Governance present')
+assert.ok(governance.minors.length >= 2, 'multi-minor journal decoded')
+for (const m of governance.minors) {
+  const hit = filterRows(data.journals, { ...emptyFilter, minor: [m] })
+  assert.ok(hit.indexOf(governance) >= 0, 'minor ' + data.minorNames[m].zh + ' keeps the journal')
+}
+
 // the case the user reported: a comprehensive journal must sit in 综合性期刊
 const sciRep = data.journals.find((j) => j.name === 'Scientific Reports')
 assert.ok(sciRep, 'Scientific Reports present')
@@ -194,11 +226,13 @@ for (const name of ['Scientific Reports', 'PLoS One', 'Nature', 'Science', 'PNAS
 // touched flags drive the merge semantics of the panel
 const touched = parsePrompt('升级')
 assert.deepEqual(touched.touched,
-  { q: false, trend: true, top: false, oa: false, kw: false, topic: false, if: false, wos: false },
+  { q: false, trend: true, top: false, oa: false, kw: false, topic: false, if: false, wos: false,
+    minor: false },
   'touched flags')
-const touchedAll = parsePrompt('2区以上 非OA top graphene 新增 材料 IF>5 SCIE')
+const touchedAll = parsePrompt('2区以上 非OA top graphene 新增 材料 IF>5 SCIE 小类:法学')
 assert.deepEqual(touchedAll.touched,
-  { q: true, trend: true, top: true, oa: true, kw: true, topic: true, if: true, wos: true }, 'all touched')
+  { q: true, trend: true, top: true, oa: true, kw: true, topic: true, if: true, wos: true, minor: true },
+  'all touched')
 const touchedWos = parsePrompt('SCIE')
 assert.equal(touchedWos.touched.wos, true, 'sci alone touches wos')
 

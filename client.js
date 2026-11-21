@@ -54,6 +54,9 @@ window.__ModuleLoader__.load({
   color:var(--dsw-alias-label-secondary)}
 .cjf-chip:hover{border-color:var(--dsw-alias-brand-primary)}
 .cjf-chips-topic .cjf-chip{font-size:11.5px;padding:2px 8px}
+.cjf-minorbar{display:flex;flex-direction:column;gap:6px;flex:1;min-width:0}
+.cjf-minorrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.cjf-minorsearch{width:250px;flex:0 0 auto;font-size:12px;padding:4px 8px}
 .cjf-chip[aria-pressed="true"]{font-weight:600;color:var(--dsw-alias-brand-primary);
   border-color:var(--dsw-alias-brand-primary);
   background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,transparent)}
@@ -148,7 +151,13 @@ window.__ModuleLoader__.load({
       'loadFailed': '读取失败：{msg}',
       'promptPlaceholder': '说要求：材料 2区以上 IF>5 非OA 升级',
       'apply': '应用要求',
-      'topic': '中科院大类',
+      'topic': '大类',
+      'minor': '小类',
+      'minorSearch': '搜小类：法学 / 能源与燃料 / law',
+      'minorHint': '可先选大类缩小范围，或直接搜小类名',
+      'minorMore': '还有 {n} 个，用搜索框缩小',
+      'minorClear': '清除小类',
+      'colMinor': '小类',
       'topicUnknown': '未分类',
       'topicUnknownHint': '这条期刊在 2025 分区表里没有大类记录',
       'coverage': '其中 {n} 本有影响因子',
@@ -219,6 +228,12 @@ window.__ModuleLoader__.load({
       'promptPlaceholder': 'Describe what you need: Q1-Q2, no OA, upgraded, name has energy',
       'apply': 'Apply',
       'topic': 'Major category',
+      'minor': 'Minor category',
+      'minorSearch': 'Search a minor category: law, energy & fuels …',
+      'minorHint': 'Pick a major category first to narrow this list, or search a name',
+      'minorMore': '{n} more — narrow with the search box',
+      'minorClear': 'Clear minor',
+      'colMinor': 'Minor category',
       'topicUnknown': 'Unclassified',
       'topicUnknownHint': 'The 2025 partition table has no major category for this title',
       'coverage': '{n} titles carry an impact factor',
@@ -331,6 +346,8 @@ window.__ModuleLoader__.load({
       const flags = String(raw.flags || '')
       const fieldCodes = String(raw.field || '')
       const ifCodes = String(raw.if || '')
+      const minorRows = String(raw.minor || '').split('|')
+      const minorNames = Array.isArray(raw.minorNames) ? raw.minorNames : []
       const wosCodes = String(raw.wos || '')
       const fields = Array.isArray(raw.fields) ? raw.fields : []
       const wosNames = Array.isArray(raw.wosNames) ? raw.wosNames : ['']
@@ -348,6 +365,15 @@ window.__ModuleLoader__.load({
         const b = q23.charCodeAt(i) - 48
         const top = flags.charCodeAt(i * 2) === 49
         const oa = flags.charCodeAt(i * 2 + 1) === 49
+        // Minor categories: base-36 pairs, one row per journal in `minor`.
+        const minors = []
+        const minorRow = minorRows[i] || ''
+        for (let k = 0; k + 1 < minorRow.length; k += 2) {
+          const minorIndex = base36(minorRow.slice(k, k + 2))
+          if (minorIndex < minorNames.length && minors.indexOf(minorIndex) < 0) {
+            minors.push(minorIndex)
+          }
+        }
         const rawCode = fieldCodes.charCodeAt(i)
         const fieldIndex = rawCode >= 65 && rawCode <= 90 ? rawCode - 65 : -1
         const impact = base36(ifCodes.slice(i * 3, i * 3 + 3)) / 10
@@ -374,6 +400,7 @@ window.__ModuleLoader__.load({
         journals[i] = {
           name: names[i], q25: a, q23: b, top: top, oa: oa, trend: trend,
           f: fieldIndex, impact: impact > 0 ? impact : null, wos: wosIndex, wosBits: wosBits,
+          minors: minors,
         }
       }
       return {
@@ -382,6 +409,7 @@ window.__ModuleLoader__.load({
         source: String(raw.source || ''),
         matched: Number(raw.matched || 0),
         fields: fields,
+        minorNames: minorNames,
         wosNames: wosNames,
         wosMasks: wosMasks,
         wosCounts: wosCounts,
@@ -483,10 +511,10 @@ window.__ModuleLoader__.load({
     function parsePrompt(text) {
       const out = {
         q: [], trend: [], top: 'any', oa: 'any', keywords: [], ignored: [], topics: [],
-        ifMin: null, ifMax: null, wos: [],
+        ifMin: null, ifMax: null, wos: [], minorWords: [],
         touched: {
           q: false, trend: false, top: false, oa: false, kw: false, topic: false, if: false,
-          wos: false,
+          wos: false, minor: false,
         },
       }
       const excludedQ = []
@@ -503,6 +531,16 @@ window.__ModuleLoader__.load({
       // 不要1区 / 不是二区 → the complement of the named quartiles
       s = s.replace(/(?:不要|不是|排除|不含|去掉|别)\s*([1-4]|一|二|三|四)\s*区/g, (all, a) => {
         excludedQ.push(CN_DIGIT[a] || Number(a))
+        return ' '
+      })
+
+      // Explicit minor-category syntax: 小类:法学 / minor:law. Plain words keep
+      // mapping to the major category, so nothing changes for existing prompts.
+      s = s.replace(/(?:小类|二级分类|minor)\s*[:：=]\s*([^\s,，、;；|/]+)/gi, (all, word) => {
+        const token = String(word).trim()
+        if (token.length >= 2) {
+          out.minorWords.push(token)
+        }
         return ' '
       })
 
@@ -624,6 +662,7 @@ window.__ModuleLoader__.load({
       }
       out.wos = unique(out.wos)
       out.touched.wos = out.wos.length > 0
+      out.touched.minor = out.minorWords.length > 0
 
       // Chinese topic words become the OpenAlex field they name. Longest
       // patterns run first, so 化学工程 never degrades into 化学.
@@ -742,8 +781,8 @@ window.__ModuleLoader__.load({
     // Filtering and sorting
     // ---------------------------------------------------------------------
     const EMPTY_FILTERS = {
-      topic: [], q: [], trend: [], top: 'any', oa: 'any', ifMin: '', ifMax: '', wos: [],
-      kw: '', sort: 'q',
+      topic: [], minor: [], q: [], trend: [], top: 'any', oa: 'any', ifMin: '', ifMax: '',
+      wos: [], kw: '', sort: 'q',
     }
 
     // Impact-factor bounds are typed text so an empty box means "no bound".
@@ -767,6 +806,19 @@ window.__ModuleLoader__.load({
       const topics = filters.topic || []
       if (topics.length > 0 && topics.indexOf(journal.f) < 0) {
         return false
+      }
+      const minors = filters.minor || []
+      if (minors.length > 0) {
+        let hitMinor = false
+        for (const minor of journal.minors) {
+          if (minors.indexOf(minor) >= 0) {
+            hitMinor = true
+            break
+          }
+        }
+        if (!hitMinor) {
+          return false
+        }
       }
       const wosBits = filters.wos || []
       if (wosBits.length > 0) {
@@ -981,6 +1033,38 @@ window.__ModuleLoader__.load({
       }, wide ? m('open') : '筛')
     }
 
+    function subtitleText(journal, fields, minorNames) {
+      const english = /^en/i.test(activeLocale())
+      const parts = []
+      parts.push(journal.f >= 0 && fields[journal.f]
+        ? (english ? fields[journal.f].en : fields[journal.f].zh)
+        : m('topicUnknown'))
+      const minors = journal.minors || []
+      if (minors.length > 0 && minorNames[minors[0]]) {
+        parts.push(minorNames[minors[0]].zh + (minors.length > 1 ? ' +' + (minors.length - 1) : ''))
+      }
+      if (journal.wosBits !== 0) {
+        parts.push(wosBitsLabel(null, journal.wosBits))
+      }
+      return parts.join(' · ')
+    }
+
+    function subtitleTitle(journal, fields, minorNames) {
+      const parts = []
+      if (journal.f >= 0 && fields[journal.f]) {
+        parts.push(fields[journal.f].zh + ' / ' + fields[journal.f].en)
+      }
+      for (const minor of journal.minors || []) {
+        if (minorNames[minor]) {
+          parts.push(minorNames[minor].zh + ' / ' + minorNames[minor].en)
+        }
+      }
+      if (journal.wosBits !== 0) {
+        parts.push(wosBitsLabel(null, journal.wosBits))
+      }
+      return parts.join(' · ')
+    }
+
     function ifSortMark(sort) {
       if (sort === 'if') {
         return '↓'
@@ -991,6 +1075,7 @@ window.__ModuleLoader__.load({
     function ResultList(props) {
       const rows = props.rows
       const fields = props.fields || []
+      const minorNames = props.minorNames || []
       return h('div', { className: 'cjf-list' },
         h('div', { className: 'cjf-headrow' },
           h('span', null, m('colName')),
@@ -1009,13 +1094,11 @@ window.__ModuleLoader__.load({
         props.visible.map((journal, index) => h('div', { key: journal.name + index, className: 'cjf-row' },
           h('span', { className: 'cjf-namecell' },
             h('span', { className: 'cjf-name', title: journal.name }, journal.name),
-            h('span', { className: 'cjf-topic' },
-              journal.f >= 0 && fields[journal.f]
-                ? (/^en/i.test(activeLocale()) ? fields[journal.f].en : fields[journal.f].zh)
-                : m('topicUnknown'),
-              journal.wosBits !== 0
-                ? h('span', { className: 'cjf-topic-wos' }, ' · ' + wosBitsLabel(null, journal.wosBits))
-                : null,
+            h('span', {
+              className: 'cjf-topic',
+              title: subtitleTitle(journal, fields, minorNames),
+            },
+              subtitleText(journal, fields, minorNames),
             ),
           ),
           h(QuartilePill, { n: journal.q25 }),
@@ -1041,6 +1124,7 @@ window.__ModuleLoader__.load({
       const [filters, setFilters] = React.useState(EMPTY_FILTERS)
       const [prompt, setPrompt] = React.useState('')
       const [notice, setNotice] = React.useState(null)
+      const [minorQuery, setMinorQuery] = React.useState('')
       const [exportUrl, setExportUrl] = React.useState(null)
       const promptRef = React.useRef(null)
       const linkRef = React.useRef(null)
@@ -1115,6 +1199,51 @@ window.__ModuleLoader__.load({
         return counts
       }, [rows])
 
+      // Minor-category candidates: counted inside the selected major categories
+      // (or everywhere when none is selected) and narrowed by the search box.
+      const minorInfo = React.useMemo(() => {
+        if (data === null) {
+          return { list: [], counts: new Map() }
+        }
+        const counts = new Map()
+        for (const journal of data.journals) {
+          if (filters.topic.length > 0 && filters.topic.indexOf(journal.f) < 0) {
+            continue
+          }
+          for (const minor of journal.minors) {
+            counts.set(minor, (counts.get(minor) || 0) + 1)
+          }
+        }
+        const needle = minorQuery.trim().toLowerCase()
+        const list = []
+        for (const entry of counts) {
+          const name = data.minorNames[entry[0]]
+          if (needle !== '' &&
+            String(name.zh).toLowerCase().indexOf(needle) < 0 &&
+            String(name.en).toLowerCase().indexOf(needle) < 0) {
+            continue
+          }
+          list.push(entry)
+        }
+        list.sort((a, b) => b[1] - a[1])
+        return { list: list, counts: counts }
+      }, [data, filters.topic, minorQuery])
+
+      const MINOR_CAP = 40
+      const shownMinors = []
+      for (const minor of filters.minor) {
+        shownMinors.push(minor)
+      }
+      for (const entry of minorInfo.list) {
+        if (shownMinors.length >= MINOR_CAP) {
+          break
+        }
+        if (shownMinors.indexOf(entry[0]) < 0) {
+          shownMinors.push(entry[0])
+        }
+      }
+      const minorHidden = minorInfo.list.filter((entry) => shownMinors.indexOf(entry[0]) < 0).length
+
       // Topic chips: only fields that actually occur, most common first, so the
       // shoulders of the list are the ones this table concentrates on.
       const topicOrder = React.useMemo(() => {
@@ -1147,6 +1276,10 @@ window.__ModuleLoader__.load({
         setNotice(null)
         setFilters((current) => ({ ...current, topic: toggle(current.topic, value) }))
       }
+      const toggleMinor = (value) => {
+        setNotice(null)
+        setFilters((current) => ({ ...current, minor: toggle(current.minor, value) }))
+      }
       const toggleWos = (value) => {
         setNotice(null)
         setFilters((current) => ({ ...current, wos: toggle(current.wos, value) }))
@@ -1166,7 +1299,30 @@ window.__ModuleLoader__.load({
         const parsed = parsePrompt(prompt)
         const touched = parsed.touched
         const nothing = !touched.q && !touched.trend && !touched.top && !touched.oa &&
-          !touched.kw && !touched.topic && !touched.if && !touched.wos
+          !touched.kw && !touched.topic && !touched.if && !touched.wos && !touched.minor
+        const minorIndexes = []
+        if (touched.minor && data !== null) {
+          for (const word of parsed.minorWords) {
+            const needle = word.toLowerCase()
+            const exact = []
+            const loose = []
+            for (let i = 0; i < data.minorNames.length; i += 1) {
+              const entry = data.minorNames[i]
+              const zh = String(entry.zh || '').toLowerCase()
+              const en = String(entry.en || '').toLowerCase()
+              if (zh === needle || en === needle) {
+                exact.push(i)
+              } else if (zh.indexOf(needle) >= 0 || en.indexOf(needle) >= 0) {
+                loose.push(i)
+              }
+            }
+            for (const i of (exact.length > 0 ? exact : loose)) {
+              if (minorIndexes.indexOf(i) < 0) {
+                minorIndexes.push(i)
+              }
+            }
+          }
+        }
         const topicIndexes = []
         if (touched.topic && data !== null) {
           for (const name of parsed.topics) {
@@ -1184,6 +1340,7 @@ window.__ModuleLoader__.load({
           trend: touched.trend ? parsed.trend : current.trend,
           top: touched.top ? parsed.top : current.top,
           oa: touched.oa ? parsed.oa : current.oa,
+          minor: touched.minor && minorIndexes.length > 0 ? minorIndexes : current.minor,
           wos: touched.wos ? parsed.wos : current.wos,
           ifMin: touched.if ? (parsed.ifMin === null ? '' : String(parsed.ifMin)) : current.ifMin,
           ifMax: touched.if ? (parsed.ifMax === null ? '' : String(parsed.ifMax)) : current.ifMax,
@@ -1198,7 +1355,7 @@ window.__ModuleLoader__.load({
 
       const exportCsv = () => {
         const head = [m('colName'), '2025', '2023', m('trend'), m('colIf'), m('colTop'), m('colOa'),
-          m('colField'), m('colWos')]
+          m('colField'), m('colMinor'), m('colWos')]
         const lines = [head.map(csvCell).join(',')]
         for (const journal of rows) {
           lines.push([
@@ -1212,6 +1369,7 @@ window.__ModuleLoader__.load({
             csvCell(journal.f >= 0 && data.fields[journal.f]
               ? (/^en/i.test(activeLocale()) ? data.fields[journal.f].en : data.fields[journal.f].zh)
               : m('topicUnknown')),
+            csvCell((journal.minors || []).map((minor) => (data.minorNames[minor] || {}).zh || '').filter(Boolean).join('; ')),
             csvCell(wosLabel(data, journal.wos)),
           ].join(','))
         }
@@ -1302,6 +1460,47 @@ window.__ModuleLoader__.load({
                 onClick: () => toggleTopic(-1),
                 title: m('topicUnknownHint'),
               }, m('topicUnknown')) : null,
+            ),
+          ),
+          h('div', { className: 'cjf-group' },
+            h('span', { className: 'cjf-label' }, m('minor')),
+            h('div', { className: 'cjf-minorbar' },
+              h('div', { className: 'cjf-minorrow' },
+                h('input', {
+                  className: 'cjf-input cjf-minorsearch',
+                  value: minorQuery,
+                  placeholder: m('minorSearch'),
+                  'aria-label': m('minorSearch'),
+                  onChange: (event) => setMinorQuery(event.target.value),
+                }),
+                filters.minor.length > 0
+                  ? h('button', {
+                    type: 'button',
+                    className: 'cjf-btn',
+                    onClick: () => {
+                      setNotice(null)
+                      setFilters((current) => ({ ...current, minor: [] }))
+                    },
+                  }, m('minorClear'))
+                  : null,
+                filters.topic.length === 0 && minorQuery === ''
+                  ? h('span', { className: 'cjf-muted' }, m('minorHint'))
+                  : null,
+              ),
+              h('div', { className: 'cjf-chips cjf-chips-topic' },
+                shownMinors.map((minor) => {
+                  const name = data && data.minorNames[minor]
+                  return h(Chip, {
+                    key: 'minor' + minor,
+                    on: filters.minor.indexOf(minor) >= 0,
+                    onClick: () => toggleMinor(minor),
+                    title: name ? name.en + ' · ' + number(minorInfo.counts.get(minor) || 0) : '',
+                  }, name ? name.zh : String(minor))
+                }),
+                minorHidden > 0
+                  ? h('span', { className: 'cjf-muted' }, m('minorMore', { n: number(minorHidden) }))
+                  : null,
+              ),
             ),
           ),
           h('div', { className: 'cjf-group' },
@@ -1438,6 +1637,7 @@ window.__ModuleLoader__.load({
                   rows: rows,
                   visible: visible,
                   fields: data.fields,
+                  minorNames: data.minorNames,
                   sort: filters.sort,
                   onSortIf: () => {
                     setNotice(null)
